@@ -35,12 +35,6 @@
 #include "caml/memprof.h"
 #include "caml/eventlog.h"
 
-#if defined (NATIVE_CODE) && defined (NO_NAKED_POINTERS)
-#define NATIVE_CODE_AND_NO_NAKED_POINTERS
-#else
-#undef NATIVE_CODE_AND_NO_NAKED_POINTERS
-#endif
-
 #ifdef _MSC_VER
 Caml_inline double fmin(double a, double b) {
   return (a < b) ? a : b;
@@ -152,7 +146,7 @@ static void realloc_gray_vals (void)
 
 void caml_darken (value v, value *p /* not used */)
 {
-#ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
+#ifdef NO_NAKED_POINTERS
   if (Is_block (v) && !Is_young (v)) {
 #else
   if (Is_block (v) && Is_in_heap (v)) {
@@ -164,13 +158,10 @@ void caml_darken (value v, value *p /* not used */)
       h = Hd_val (v);
       t = Tag_hd (h);
     }
-#ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
+#ifdef NO_NAKED_POINTERS
     /* We insist that naked pointers to outside the heap point to things that
-       look like values with headers coloured black.  This isn't always
-       strictly necessary but is essential in certain cases---in particular
-       when the value is allocated in a read-only section.  (For the values
-       where it would be safe it is a performance improvement since we avoid
-       putting them on the grey list.) */
+       look like values with headers coloured black.  This is always
+       strictly necessary because the compactor relies on it. */
     CAMLassert (Is_in_heap (v) || Is_black_hd (h));
 #endif
     CAMLassert (!Is_blue_hd (h));
@@ -236,7 +227,7 @@ Caml_inline value* mark_slice_darken(value *gray_vals_ptr,
 
   child = Field (v, i);
 
-#ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
+#ifdef NO_NAKED_POINTERS
   if (Is_block (child) && ! Is_young (child)) {
 #else
   if (Is_block (child) && Is_in_heap (child)) {
@@ -270,7 +261,7 @@ Caml_inline value* mark_slice_darken(value *gray_vals_ptr,
       child -= Infix_offset_val(child);
       chd = Hd_val(child);
     }
-#ifdef NATIVE_CODE_AND_NO_NAKED_POINTERS
+#ifdef NO_NAKED_POINTERS
     /* See [caml_darken] for a description of this assertion. */
     CAMLassert (Is_in_heap (child) || Is_black_hd (chd));
 #endif
@@ -301,7 +292,13 @@ static value* mark_ephe_aux (value *gray_vals_ptr, intnat *work,
   CAMLassert(Tag_val (v) == Abstract_tag);
   data = Field(v,CAML_EPHE_DATA_OFFSET);
   if ( data != caml_ephe_none &&
-       Is_block (data) && Is_in_heap (data) && Is_white_val (data)){
+       Is_block (data) &&
+#ifdef NO_NAKED_POINTERS
+       !Is_young(data) &&
+#else
+       Is_in_heap (data) &&
+#endif
+       Is_white_val (data)){
 
     int alive_data = 1;
 
@@ -314,7 +311,13 @@ static value* mark_ephe_aux (value *gray_vals_ptr, intnat *work,
       key = Field (v, i);
     ephemeron_again:
       if (key != caml_ephe_none &&
-          Is_block (key) && Is_in_heap (key)){
+          Is_block (key) &&
+#ifdef NO_NAKED_POINTERS
+          !Is_young(key)
+#else
+          Is_in_heap(key)
+#endif
+          ){
         if (Tag_val (key) == Forward_tag){
           value f = Forward_val (key);
           if (Is_long (f) ||

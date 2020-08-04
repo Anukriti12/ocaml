@@ -118,9 +118,13 @@ let override = function
 
 (* variance encoding: need to sync up with the [parser.mly] *)
 let type_variance = function
-  | Invariant -> ""
+  | NoVariance -> ""
   | Covariant -> "+"
   | Contravariant -> "-"
+
+let type_injectivity = function
+  | NoInjectivity -> ""
+  | Injective -> "!"
 
 type construct =
   [ `cons of expression list
@@ -1251,7 +1255,16 @@ and binding ctxt f {pvb_pat=p; pvb_expr=x; _} =
       Some (p, pt_tyvars, e_ct, e) else None
     | _ -> None in
   if x.pexp_attributes <> []
-  then pp f "%a@;=@;%a" (pattern ctxt) p (expression ctxt) x else
+  then
+    match p with
+    | {ppat_desc=Ppat_constraint({ppat_desc=Ppat_var _; _} as pat,
+                                 ({ptyp_desc=Ptyp_poly _; _} as typ));
+       ppat_attributes=[]; _} ->
+        pp f "%a@;: %a@;=@;%a"
+          (simple_pattern ctxt) pat (core_type ctxt) typ (expression ctxt) x
+    | _ ->
+        pp f "%a@;=@;%a" (pattern ctxt) p (expression ctxt) x
+  else
   match is_desugared_gadt p x with
   | Some (p, [], ct, e) ->
       pp f "%a@;: %a@;=@;%a"
@@ -1434,8 +1447,8 @@ and structure_item ctxt f x =
       item_extension ctxt f e;
       item_attributes ctxt f a
 
-and type_param ctxt f (ct, a) =
-  pp f "%s%a" (type_variance a) (core_type ctxt) ct
+and type_param ctxt f (ct, (a,b)) =
+  pp f "%s%s%a" (type_variance a) (type_injectivity b) (core_type ctxt) ct
 
 and type_params ctxt f = function
   | [] -> ()

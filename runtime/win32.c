@@ -38,7 +38,7 @@
 #include <string.h>
 #include <signal.h>
 #include "caml/alloc.h"
-#include "caml/address_class.h"
+#include "caml/codefrag.h"
 #include "caml/fail.h"
 #include "caml/io.h"
 #include "caml/memory.h"
@@ -87,7 +87,7 @@ int caml_read_fd(int fd, int flags, void * buf, int n)
 {
   int retcode;
   if ((flags & CHANNEL_FLAG_FROM_SOCKET) == 0) {
-    caml_enter_blocking_section();
+    caml_enter_blocking_section_no_pending();
     retcode = read(fd, buf, n);
     /* Large reads from console can fail with ENOMEM.  Reduce requested size
        and try again. */
@@ -97,7 +97,7 @@ int caml_read_fd(int fd, int flags, void * buf, int n)
     caml_leave_blocking_section();
     if (retcode == -1) caml_sys_io_error(NO_ARG);
   } else {
-    caml_enter_blocking_section();
+    caml_enter_blocking_section_no_pending();
     retcode = recv((SOCKET) _get_osfhandle(fd), buf, n, 0);
     caml_leave_blocking_section();
     if (retcode == -1) caml_win32_sys_error(WSAGetLastError());
@@ -114,7 +114,7 @@ int caml_write_fd(int fd, int flags, void * buf, int n)
     retcode = write(fd, buf, n);
   } else {
 #endif
-    caml_enter_blocking_section();
+    caml_enter_blocking_section_no_pending();
     retcode = write(fd, buf, n);
     caml_leave_blocking_section();
 #if defined(NATIVE_CODE) && defined(WITH_SPACETIME)
@@ -122,7 +122,7 @@ int caml_write_fd(int fd, int flags, void * buf, int n)
 #endif
     if (retcode == -1) caml_sys_io_error(NO_ARG);
   } else {
-    caml_enter_blocking_section();
+    caml_enter_blocking_section_no_pending();
     retcode = send((SOCKET) _get_osfhandle(fd), buf, n, 0);
     caml_leave_blocking_section();
     if (retcode == -1) caml_win32_sys_error(WSAGetLastError());
@@ -539,7 +539,8 @@ static LONG CALLBACK
   DWORD *ctx_ip = &(ctx->Eip);
   DWORD *ctx_sp = &(ctx->Esp);
 
-  if (code == EXCEPTION_STACK_OVERFLOW && Is_in_code_area (*ctx_ip))
+  if (code == EXCEPTION_STACK_OVERFLOW &&
+      caml_find_code_fragment_by_pc((char *) (*ctx_ip)) != NULL)
     {
       uintnat faulting_address;
       uintnat * alt_esp;
@@ -561,24 +562,14 @@ static LONG CALLBACK
 
 #else
 
-/* Do not use the macro from address_class.h here. */
-#undef Is_in_code_area
-#define Is_in_code_area(pc) \
- ( ((char *)(pc) >= caml_code_area_start && \
-    (char *)(pc) <= caml_code_area_end)     \
-|| ((char *)(pc) >= &caml_system__code_begin && \
-    (char *)(pc) <= &caml_system__code_end)     \
-|| (Classify_addr(pc) & In_code_area) )
-extern char caml_system__code_begin, caml_system__code_end;
-
-
 static LONG CALLBACK
     caml_stack_overflow_VEH (EXCEPTION_POINTERS* exn_info)
 {
   DWORD code   = exn_info->ExceptionRecord->ExceptionCode;
   CONTEXT *ctx = exn_info->ContextRecord;
 
-  if (code == EXCEPTION_STACK_OVERFLOW && Is_in_code_area (ctx->Rip))
+  if (code == EXCEPTION_STACK_OVERFLOW &&
+      caml_find_code_fragment_by_pc((char *) (ctx->Rip)) != NULL)
     {
       uintnat faulting_address;
       uintnat * alt_rsp;

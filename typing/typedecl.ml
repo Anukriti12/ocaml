@@ -114,7 +114,7 @@ let enter_type rec_flag env sdecl (id, uid) =
       type_manifest =
         begin match sdecl.ptype_manifest with None -> None
         | Some _ -> Some(Ctype.newvar ()) end;
-      type_variance = List.map (fun _ -> Variance.full) sdecl.ptype_params;
+      type_variance = Variance.unknown_signature ~arity;
       type_separability = Types.Separability.default_signature ~arity;
       type_is_newtype = false;
       type_expansion_scope = Btype.lowest_level;
@@ -403,7 +403,7 @@ let transl_declaration env sdecl (id, uid) =
         type_kind = kind;
         type_private = sdecl.ptype_private;
         type_manifest = man;
-        type_variance = List.map (fun _ -> Variance.full) params;
+        type_variance = Variance.unknown_signature ~arity;
         type_separability = Types.Separability.default_signature ~arity;
         type_is_newtype = false;
         type_expansion_scope = Btype.lowest_level;
@@ -1066,6 +1066,11 @@ let transl_extension_constructor env type_path type_params
     (fun () -> transl_extension_constructor env type_path type_params
         typext_params priv sext)
 
+let is_rebind ext =
+  match ext.ext_kind with
+  | Text_rebind _ -> true
+  | Text_decl _ -> false
+
 let transl_type_extension extend env loc styext =
   reset_type_variables();
   Ctype.begin_def();
@@ -1155,7 +1160,8 @@ let transl_type_extension extend env loc styext =
   let newenv =
     List.fold_left
       (fun env ext ->
-         Env.add_extension ~check:true ext.ext_id ext.ext_type env)
+         let rebind = is_rebind ext in
+         Env.add_extension ~check:true ~rebind ext.ext_id ext.ext_type env)
       env constructors
   in
   let tyext =
@@ -1190,7 +1196,10 @@ let transl_exception env sext =
       raise (Error(ext.ext_loc, Unbound_type_var_ext(ty, ext.ext_type)))
   | None -> ()
   end;
-  let newenv = Env.add_extension ~check:true ext.ext_id ext.ext_type env in
+  let rebind = is_rebind ext in
+  let newenv =
+    Env.add_extension ~check:true ~rebind ext.ext_id ext.ext_type env
+  in
   ext, newenv
 
 let transl_type_exception env t =
@@ -1425,7 +1434,7 @@ let transl_with_constraint id row_path ~sig_env ~sig_decl ~outer_env sdecl =
         raise(Error(cty.ctyp_loc, Inconsistent_constraint (env, tr)))
     ) tparams sig_decl.type_params;
   List.iter (fun (cty, cty', loc) ->
-    (* Note: contraints must also be enforced in [sig_env] because
+    (* Note: constraints must also be enforced in [sig_env] because
        they may contain parameter variables from [tparams]
        that have now be unified in [sig_env]. *)
     try Ctype.unify env cty.ctyp_type cty'.ctyp_type
@@ -1532,7 +1541,7 @@ let abstract_type_decl arity =
       type_kind = Type_abstract;
       type_private = Public;
       type_manifest = None;
-      type_variance = replicate_list Variance.full arity;
+      type_variance = Variance.unknown_signature ~arity;
       type_separability = Types.Separability.default_signature ~arity;
       type_is_newtype = false;
       type_expansion_scope = Btype.lowest_level;

@@ -183,7 +183,7 @@ static void rand_batch(void) {
   for(i = 0; i < RAND_BLOCK_SIZE; i++) {
     double f = B[i];
     CAMLassert (f >= 1);
-    if(f > Max_long) rand_geom_buff[i] = Max_long;
+    if(f > (double)Max_long) rand_geom_buff[i] = Max_long;
     else rand_geom_buff[i] = (uintnat)f;
   }
 
@@ -924,22 +924,6 @@ void caml_memprof_track_interned(header_t* block, header_t* blockend) {
 static void caml_memprof_init(void) {
   init = 1;
   xoshiro_init();
-}
-
-void caml_memprof_shutdown(void) {
-  init = 0;
-  started = 0;
-  lambda = 0.;
-  suspended = 0;
-  callback_running = 0;
-  trackst.len = 0;
-  trackst.callback = trackst.young = trackst.delete = 0;
-  caml_stat_free(trackst.entries);
-  trackst.entries = NULL;
-  trackst.alloc_len = 0;
-  caml_stat_free(callstack_buffer);
-  callstack_buffer = NULL;
-  callstack_buffer_len = 0;
 }
 
 CAMLprim value caml_memprof_start(value lv, value szv, value tracker_param)

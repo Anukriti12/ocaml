@@ -304,7 +304,7 @@ code_t caml_next_frame_pointer(value ** sp, value ** trsp)
     if (Is_long(*spv)) continue;
     p = (code_t*) spv;
     if(&Trap_pc(*trsp) == p) {
-      *trsp = Trap_link(*trsp);
+      *trsp = *trsp + Long_val(Trap_link_offset(*trsp));
       continue;
     }
 
@@ -386,6 +386,7 @@ static void read_main_debug_info(struct debug_info *di)
   if (caml_seek_optional_section(fd, &trail, "DBUG") != -1) {
     chan = caml_open_descriptor_in(fd);
 
+    Lock(chan);
     num_events = caml_getword(chan);
     events = caml_alloc(num_events, 0);
 
@@ -401,6 +402,7 @@ static void read_main_debug_info(struct debug_info *di)
       /* Record event list */
       Store_field(events, i, evl);
     }
+    Unlock(chan);
 
     caml_close_channel(chan);
 
